@@ -1,4 +1,4 @@
-# app.py — FINAL RENDER.COM VERSION (Nov 2025)
+# app.py — FINAL RENDER.COM VERSION (NOVEMBER 2025)
 from uuid import uuid4
 import os
 from flask import Flask, jsonify, request, render_template_string
@@ -12,13 +12,13 @@ from phonepe.sdk.pg.env import Env
 app = Flask(__name__)
 CORS(app)
 
-# === READ FROM RENDER ENVIRONMENT VARIABLES (SECURE) ===
+# === SECURELY READ FROM RENDER ENVIRONMENT VARIABLES ===
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 CLIENT_VERSION = int(os.getenv("CLIENT_VERSION", "1"))
 REDIRECT_BASE_URL = os.getenv("REDIRECT_BASE_URL")  # e.g. https://phonepe-flask-server-1.onrender.com
 
-# Use sandbox for testing, switch to PRODUCTION later
+# SANDBOX for testing — Change to Env.PRODUCTION for live
 ENV = Env.SANDBOX
 
 client = StandardCheckoutClient.get_instance(
@@ -32,8 +32,9 @@ client = StandardCheckoutClient.get_instance(
 @app.route('/')
 def home():
     return jsonify({
-        "status": "running",
+        "status": "PhonePe Server Running",
         "redirect_url": f"{REDIRECT_BASE_URL}/payment-success",
+        "environment": "SANDBOX" if ENV == Env.SANDBOX else "PRODUCTION",
         "tip": "POST /pay with amount in paise"
     })
 
@@ -41,7 +42,7 @@ def home():
 def create_payment():
     try:
         data = request.get_json() or {}
-        amount = int(data.get('amount', 10000))
+        amount = int(data.get('amount', 10000))  # in paise
         user_id = data.get('userId', 'guest')
 
         merchant_order_id = f"ORDER_{uuid4().hex[:20]}"
@@ -54,7 +55,7 @@ def create_payment():
             meta_info=MetaInfo(udf1=user_id, udf2="flutter")
         )
 
-        print(f"Creating payment → {merchant_order_id} | ₹{amount/100}")
+        print(f"Creating payment → {merchant_order_id} | ₹{amount/100:.2f}")
         response = client.pay(pay_request)
 
         redirect_url_phonepe = getattr(response, 'redirect_url', None)
@@ -68,7 +69,9 @@ def create_payment():
         })
 
     except Exception as e:
-        print("ERROR:", e)
+        print("PAYMENT ERROR:", e)
+        import traceback
+        traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/status/<order_id>')
@@ -77,31 +80,56 @@ def check_status(order_id):
         resp = client.get_payment_status(order_id)
         return jsonify({
             "status": "success",
+            "order_id": order_id,
             "payment_state": getattr(resp, "state", "UNKNOWN"),
-            "transaction_id": getattr(resp, "transaction_id", None)
+            "transaction_id": getattr(resp, "transaction_id", None),
+            "amount": getattr(resp, "amount", None)
         })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/payment-success')
 def payment_success():
-    order_id = request.args.get('merchantOrderId') or request.args.get('orderId')
-    status = request.args.get('status', 'PENDING')
+    order_id = request.args.get('merchantOrderId') or request.args.get('orderId') or 'N/A'
+    status = request.args.get('status', 'PENDING').upper()
 
     html = f"""
     <!DOCTYPE html>
     <html>
-    <body style="font-family:Arial;text-align:center;padding:50px;">
-      <h1>{'Payment Successful!' if status.upper() == 'COMPLETED' else 'Payment Failed'}</h1>
-      <p>Order ID: {order_id}</p>
-      <p>Status: {status}</p>
-      <script>
-        if (window.flutter_inappwebview) {{
-          window.flutter_inappwebview.callHandler('paymentResult', {{orderId: '{order_id}', status: '{status}'}});
-        }}
-        // Deep link back to app
-        setTimeout(() => location.href = "stylehub://payment-success?orderId={order_id}&status={status}", 2000);
-      </script>
+    <head>
+        <title>Payment Complete</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            body {{font-family: system-ui; text-align: center; padding: 60px; background: #f8f9fa;}}
+            .box {{background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); max-width: 400px; margin: auto;}}
+            .success {{color: #28a745;}} .failed {{color: #dc3545;}}
+        </style>
+    </head>
+    <body>
+        <div class="box">
+            <h1 class="{'success' if status == 'COMPLETED' else 'failed'}">
+                {'Payment Successful!' if status == 'COMPLETED' else 'Payment Failed'}
+            </h1>
+            <p><strong>Order ID:</strong> {order_id}</p>
+            <p><strong>Status:</strong> {status}</p>
+            <p>Returning to app...</p>
+        </div>
+
+        <!-- CRITICAL: Force deep link back to Flutter app -->
+        <script>
+            // Method 1: Direct deep link (works 99% of cases)
+            setTimeout(() => {{
+                window.location.href = "stylehub://payment-success?orderId={order_id}&status={status}";
+            }}, 1500);
+
+            // Method 2: JS bridge for InAppWebView (backup)
+            if (window.flutter_inappwebview) {{
+                window.flutter_inappwebview.callHandler('paymentResult', {{
+                    orderId: '{order_id}',
+                    status: '{status}'
+                }});
+            }}
+        </script>
     </body>
     </html>
     """
@@ -109,4 +137,5 @@ def payment_success():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
+    print(f"PhonePe Server Running on port {port}")
     app.run(host="0.0.0.0", port=port)
