@@ -81,7 +81,7 @@ def status(order_id):
         resp = client.get_payment_status(order_id)
         return jsonify({
             "status": "success",
-            "order_id": order_id,
+            "merchantOrderId": merchant_order_id,
             "payment_state": getattr(resp, "state", None),
             "transaction_id": getattr(resp, "transaction_id", None),
             "amount": getattr(resp, "amount", None)
