@@ -103,6 +103,7 @@ def payment_success():
             body {{font-family: system-ui; text-align: center; padding: 60px; background: #f8f9fa;}}
             .box {{background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); max-width: 400px; margin: auto;}}
             .success {{color: #28a745;}} .failed {{color: #dc3545;}}
+            .button {{background: #007bff; color: white; padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; margin: 10px;}}
         </style>
     </head>
     <body>
@@ -112,22 +113,42 @@ def payment_success():
             </h1>
             <p><strong>Order ID:</strong> {order_id}</p>
             <p><strong>Status:</strong> {status}</p>
-            <p>Returning to app...</p>
+            
+            <div style="margin-top: 30px;">
+                <button class="button" onclick="returnToApp()">Return to App</button>
+            </div>
         </div>
 
-        <!-- CRITICAL: Force deep link back to Flutter app -->
         <script>
-            // Method 1: Direct deep link (works 99% of cases)
-            setTimeout(() => {{
+            // METHOD 1: Deep link (primary)
+            function returnToApp() {{
                 window.location.href = "stylehub://payment-success?orderId={order_id}&status={status}";
-            }}, 1500);
-
-            // Method 2: JS bridge for InAppWebView (backup)
+            }}
+            
+            // METHOD 2: Auto-redirect after delay
+            setTimeout(returnToApp, 2000);
+            
+            // METHOD 3: For InAppWebView
             if (window.flutter_inappwebview) {{
                 window.flutter_inappwebview.callHandler('paymentResult', {{
                     orderId: '{order_id}',
                     status: '{status}'
                 }});
+                // Auto-close after sending data
+                setTimeout(() => {{
+                    if (window.flutter_inappwebview) {{
+                        window.flutter_inappwebview.callHandler('closeWebView');
+                    }}
+                }}, 1000);
+            }}
+            
+            // METHOD 4: Fallback - try to close window
+            function closeWindow() {{
+                if (window.history.length > 1) {{
+                    window.history.back();
+                }} else {{
+                    window.close();
+                }}
             }}
         </script>
     </body>
